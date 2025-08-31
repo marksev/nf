@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Interactive Brain</title>
+  <style>
+    body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    canvas { border: 1px solid #000; }
+  </style>
+</head>
+<body>
+  <canvas id="brain" width="500" height="500"></canvas>
+  <script>
+    const canvas = document.getElementById('brain');
+    const ctx = canvas.getContext('2d');
+    const rows = 9;
+    const cols = 10;
+    const active = new Array(rows * cols).fill(false);
+    const w = canvas.width;
+    const h = canvas.height;
+    const path = new Path2D();
+    path.moveTo(w / 2, 0);
+    path.quadraticCurveTo(w * 0.25, 0, w * 0.25, h * 0.1);
+    path.quadraticCurveTo(0, h * 0.2, 0, h * 0.5);
+    path.quadraticCurveTo(0, h * 0.8, w * 0.25, h * 0.9);
+    path.quadraticCurveTo(w * 0.25, h, w / 2, h);
+    path.quadraticCurveTo(w * 0.75, h, w * 0.75, h * 0.9);
+    path.quadraticCurveTo(w, h * 0.8, w, h * 0.5);
+    path.quadraticCurveTo(w, h * 0.2, w * 0.75, h * 0.1);
+    path.quadraticCurveTo(w * 0.75, 0, w / 2, 0);
+    path.closePath();
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.clip(path);
+      const cellWidth = w / cols;
+      const cellHeight = h / rows;
+      ctx.strokeStyle = '#000';
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const idx = row * cols + col;
+          const x = col * cellWidth;
+          const y = row * cellHeight;
+          ctx.fillStyle = active[idx] ? 'green' : 'white';
+          ctx.fillRect(x, y, cellWidth, cellHeight);
+          ctx.strokeRect(x, y, cellWidth, cellHeight);
+        }
+      }
+      ctx.restore();
+      ctx.lineWidth = 2;
+      ctx.stroke(path);
+      ctx.beginPath();
+      ctx.moveTo(w / 2, 0);
+      ctx.lineTo(w / 2, h);
+      ctx.stroke();
+    }
+
+    draw();
+
+    canvas.addEventListener('click', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      if (!ctx.isPointInPath(path, x, y)) return;
+      const cellWidth = w / cols;
+      const cellHeight = h / rows;
+      const col = Math.floor(x / cellWidth);
+      const row = Math.floor(y / cellHeight);
+      const idx = row * cols + col;
+      active[idx] = true;
+      draw();
+    });
+  </script>
+</body>
+</html>
