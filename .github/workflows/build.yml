@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - claude/html-to-flutter-10O5e
+      - claude/fix-drag-offset-ux-kUYRZ
       - main
   workflow_dispatch:
 

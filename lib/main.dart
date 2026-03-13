@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
@@ -364,7 +365,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     setState(() {
       _pieces[slotIdx] = null;
-      _score += piece.shape.length * 5;
+      _score += piece.shape.length;
       if (_score > _best) {
         _best = _score;
         _saveBest();
@@ -411,8 +412,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       for (int r = 0; r < kGridSize; r++) clearing.add('$r,$c');
     }
 
-    final total = fullRows.length + fullCols.length;
-    final pts = clearing.length * 10 * total;
+    final pts = clearing.length;
 
     setState(() {
       _clearingCells = clearing;
