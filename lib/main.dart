@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:just_audio/just_audio.dart';
 import 'dart:math';
+import 'dart:typed_data';
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const int kGridSize = 8;
@@ -14,6 +16,9 @@ const Color kGoldColor = Color(0xFFFFD700);
 const Color kAccentColor = Color(0xFFff6b9d);
 const Color kAccent2Color = Color(0xFFc44dff);
 const Color kTextColor = Color(0xFFf0e6ff);
+
+/// How many grid-cell heights the drag ghost is lifted above the finger.
+const double kDragOffsetCells = 1.8;
 
 // ─── PIECE COLORS ─────────────────────────────────────────────────────────────
 class PieceColor {
@@ -62,7 +67,7 @@ const List<List<List<int>>> kShapes = [
   [[0,0],[0,1],[0,2],[0,3]],
   [[0,0],[1,0],[2,0],[3,0]],
   [[0,0],[0,1],[1,0],[1,1]],
-  [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],
+  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[2,2]],
   [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]],
   [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]],
 ];
@@ -88,6 +93,140 @@ class Particle {
     required this.r, required this.life,
     required this.decay, required this.color,
   });
+}
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+
+/// A just_audio source backed by raw in-memory WAV bytes.
+class _WavSource extends StreamAudioSource {
+  final Uint8List _bytes;
+  _WavSource(this._bytes) : super(tag: 'wav');
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start ??= 0;
+    end ??= _bytes.length;
+    return StreamAudioResponse(
+      sourceLength: _bytes.length,
+      contentLength: end - start,
+      offset: start,
+      contentType: 'audio/wav',
+      stream: Stream.value(_bytes.sublist(start, end)),
+    );
+  }
+}
+
+/// Wraps a list of signed 16-bit PCM samples into a valid WAV byte buffer
+/// (mono, 44100 Hz, 16-bit).
+Uint8List _buildWav(List<int> pcm16) {
+  final dataSize = pcm16.length * 2;
+  final buf = ByteData(44 + dataSize);
+
+  void str(int off, String s) {
+    for (var i = 0; i < s.length; i++) {
+      buf.setUint8(off + i, s.codeUnitAt(i));
+    }
+  }
+
+  str(0, 'RIFF');
+  buf.setUint32(4, 36 + dataSize, Endian.little); // file size − 8
+  str(8, 'WAVEfmt ');                              // "WAVE" + "fmt "
+  buf.setUint32(16, 16, Endian.little);            // fmt chunk size
+  buf.setUint16(20, 1, Endian.little);             // PCM
+  buf.setUint16(22, 1, Endian.little);             // mono
+  buf.setUint32(24, 44100, Endian.little);         // sample rate
+  buf.setUint32(28, 88200, Endian.little);         // byte rate (SR*1*2)
+  buf.setUint16(32, 2, Endian.little);             // block align
+  buf.setUint16(34, 16, Endian.little);            // bits per sample
+  str(36, 'data');
+  buf.setUint32(40, dataSize, Endian.little);
+
+  for (var i = 0; i < pcm16.length; i++) {
+    buf.setInt16(44 + i * 2, pcm16[i], Endian.little);
+  }
+  return buf.buffer.asUint8List();
+}
+
+/// Generates a list of signed 16-bit PCM samples.
+/// [dur] seconds, sample function receives (time_secs, progress 0→1).
+List<int> _samples(double dur, double Function(double t, double p) fn) {
+  final n = (dur * 44100).round();
+  return List.generate(n, (i) {
+    final v = fn(i / 44100.0, i / n);
+    return (v * 32767).round().clamp(-32768, 32767);
+  });
+}
+
+// ── Individual sound generators ──
+
+/// Soft upward chirp (480 → 720 Hz linear sweep, 0.12 s).
+Uint8List _genPickup() => _buildWav(_samples(0.12, (t, p) {
+      // Linear chirp phase: φ = 2π(f0·t + (f1−f0)/(2T)·t²)
+      // f0=480, f1=720, T=0.12 → Δf/(2T)=1000
+      final env = p < 0.08 ? p / 0.08 : 1.0 - (p - 0.08) / 0.92;
+      return 0.28 * env * sin(2 * pi * (480 * t + 1000 * t * t));
+    }));
+
+/// Satisfying thud (200 Hz + 400 Hz harmonic, fast exponential decay, 0.15 s).
+Uint8List _genPlace() => _buildWav(_samples(0.15, (t, p) {
+      final attack = p < 0.04 ? p / 0.04 : 1.0;
+      final decay = exp(-10.0 * p);
+      return attack * decay *
+          (0.35 * sin(2 * pi * 200 * t) + 0.12 * sin(2 * pi * 400 * t));
+    }));
+
+/// Descending whoosh (880 → 220 Hz linear chirp, bell envelope, 0.35 s).
+Uint8List _genClear() => _buildWav(_samples(0.35, (t, p) {
+      // f0=880, f1=220, T=0.35 → (f1−f0)/(2T) = −660/0.7 ≈ −942.86
+      final env = sin(pi * p); // bell shape
+      return 0.30 * env * sin(2 * pi * (880 * t - 942.86 * t * t));
+    }));
+
+/// Dissonant buzz (130 Hz + 155 Hz, 0.2 s) for invalid drops.
+Uint8List _genDenied() => _buildWav(_samples(0.2, (t, p) {
+      final env = (p < 0.05 ? p / 0.05 : 1.0) * (1.0 - p);
+      return 0.30 * env *
+          (0.6 * sin(2 * pi * 130 * t) + 0.4 * sin(2 * pi * 155 * t));
+    }));
+
+/// Manages four AudioPlayer instances pre-loaded with generated WAV data.
+class SoundManager {
+  final _pickup = AudioPlayer();
+  final _place  = AudioPlayer();
+  final _clear  = AudioPlayer();
+  final _denied = AudioPlayer();
+  bool _ready = false;
+
+  Future<void> init() async {
+    try {
+      await Future.wait([
+        _pickup.setAudioSource(_WavSource(_genPickup())),
+        _place.setAudioSource(_WavSource(_genPlace())),
+        _clear.setAudioSource(_WavSource(_genClear())),
+        _denied.setAudioSource(_WavSource(_genDenied())),
+      ]);
+      _ready = true;
+    } catch (_) {
+      // Sound is non-critical; silently ignore init failures.
+    }
+  }
+
+  void playPickup() => _play(_pickup);
+  void playPlace()  => _play(_place);
+  void playClear()  => _play(_clear);
+  void playDenied() => _play(_denied);
+
+  void _play(AudioPlayer p) {
+    if (!_ready) return;
+    p.seek(Duration.zero).then((_) => p.play()).catchError((_) {});
+  }
+
+  void dispose() {
+    _pickup.dispose();
+    _place.dispose();
+    _clear.dispose();
+    _denied.dispose();
+  }
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
@@ -143,6 +282,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   late Ticker _ticker;
 
   final _rand = Random();
+  final _sounds = SoundManager();
 
   @override
   void initState() {
@@ -152,11 +292,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _ticker = createTicker(_onTick)..start();
     _loadBest();
     _refillTray();
+    _sounds.init();
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _sounds.dispose();
     super.dispose();
   }
 
@@ -215,6 +357,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     for (final cell in piece.shape) {
       _board[startR + cell[0]][startC + cell[1]] = colorVal;
     }
+
+    // Haptic + sound for successful placement
+    HapticFeedback.heavyImpact();
+    _sounds.playPlace();
+
     setState(() {
       _pieces[slotIdx] = null;
       _score += piece.shape.length * 5;
@@ -251,6 +398,10 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     }
 
     if (fullRows.isEmpty && fullCols.isEmpty) return;
+
+    // Haptic + sound for line clear (triggered immediately when lines detected)
+    HapticFeedback.lightImpact();
+    _sounds.playClear();
 
     final clearing = <String>{};
     for (final r in fullRows) {
@@ -356,6 +507,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       final local = box.globalToLocal(details.globalPosition);
       if (local.dx >= 0 && local.dy >= 0 &&
           local.dx <= box.size.width && local.dy <= box.size.height) {
+        // Haptic + sound for piece pickup
+        HapticFeedback.mediumImpact();
+        _sounds.playPickup();
         setState(() {
           _dragSlotIdx = i;
           _dragPos = details.globalPosition;
@@ -390,9 +544,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
     if (valid && pr != null && pc != null) {
       _placePiece(slotIdx, pr, pc);
+    } else {
+      // Denied sound for invalid drop
+      _sounds.playDenied();
     }
   }
 
+  /// Computes the grid preview position for a drag, taking the upward ghost
+  /// offset into account so the preview matches what the player sees.
   void _updatePreview(Offset globalPos) {
     final gridBox = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridBox == null || _dragSlotIdx == null) {
@@ -401,10 +560,13 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       _validDrop = false;
       return;
     }
-    final localPos = gridBox.globalToLocal(globalPos);
     final cellW = gridBox.size.width / kGridSize;
     final cellH = gridBox.size.height / kGridSize;
     final piece = _pieces[_dragSlotIdx!]!;
+
+    // Adjust for the upward ghost offset so the preview matches the ghost.
+    final adjustedPos = Offset(globalPos.dx, globalPos.dy - cellH * kDragOffsetCells);
+    final localPos = gridBox.globalToLocal(adjustedPos);
 
     final col = (localPos.dx / cellW - piece.cols / 2).round();
     final row = (localPos.dy / cellH - piece.rows / 2).round();
@@ -457,7 +619,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 ],
               ),
             ),
-            // Drag ghost
+            // Drag ghost — rendered above all other content
             if (_dragSlotIdx != null && _dragPos != null) _buildDragGhost(),
             // Particles
             Positioned.fill(
@@ -602,14 +764,19 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
+  /// Builds the floating ghost piece shown while dragging.
+  /// The ghost is offset upward by [kDragOffsetCells] grid-cell heights so
+  /// the piece is always visible above the player's finger/cursor.
   Widget _buildDragGhost() {
     final piece = _pieces[_dragSlotIdx!]!;
     final cs = _ghostCellSize;
     final ghostW = piece.cols * cs + 8;
     final ghostH = piece.rows * cs + 8;
+    // Lift the ghost upward so the finger doesn't obscure it.
+    final yOffset = cs * kDragOffsetCells;
     return Positioned(
       left: _dragPos!.dx - ghostW / 2,
-      top: _dragPos!.dy - ghostH / 2,
+      top: _dragPos!.dy - ghostH / 2 - yOffset,
       child: IgnorePointer(
         child: Opacity(
           opacity: 0.9,
