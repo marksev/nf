@@ -3,6 +3,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:blocky_blast/ads/banner_ad_widget.dart';
 import 'dart:math';
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ class SoundManager {
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const BlockyBlastApp());
 }
@@ -506,6 +509,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                     ),
                   ),
                   _buildTray(),
+                  const Center(child: BannerAdWidget()),
                 ],
               ),
             ),
