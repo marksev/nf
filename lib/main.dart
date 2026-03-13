@@ -160,34 +160,34 @@ List<int> _samples(double dur, double Function(double t, double p) fn) {
 
 // ── Individual sound generators ──
 
-/// Soft upward chirp (480 → 720 Hz linear sweep, 0.12 s).
-Uint8List _genPickup() => _buildWav(_samples(0.12, (t, p) {
-      // Linear chirp phase: φ = 2π(f0·t + (f1−f0)/(2T)·t²)
-      // f0=480, f1=720, T=0.12 → Δf/(2T)=1000
-      final env = p < 0.08 ? p / 0.08 : 1.0 - (p - 0.08) / 0.92;
-      return 0.28 * env * sin(2 * pi * (480 * t + 1000 * t * t));
+/// Quick bright pop (600 → 800 Hz chirp, 0.08 s).
+Uint8List _genPickup() => _buildWav(_samples(0.08, (t, p) {
+      // f0=600, f1=800, T=0.08 → Δf/(2T)=1250
+      final env = p < 0.1 ? p / 0.1 : exp(-15.0 * (p - 0.1));
+      return 0.35 * env * sin(2 * pi * (600 * t + 1250 * t * t));
     }));
 
-/// Satisfying thud (200 Hz + 400 Hz harmonic, fast exponential decay, 0.15 s).
-Uint8List _genPlace() => _buildWav(_samples(0.15, (t, p) {
-      final attack = p < 0.04 ? p / 0.04 : 1.0;
-      final decay = exp(-10.0 * p);
+/// Deep satisfying thunk (150 Hz + 250 Hz, punchy attack, 0.2 s).
+Uint8List _genPlace() => _buildWav(_samples(0.2, (t, p) {
+      final attack = p < 0.02 ? p / 0.02 : 1.0;
+      final decay = exp(-12.0 * p);
       return attack * decay *
-          (0.35 * sin(2 * pi * 200 * t) + 0.12 * sin(2 * pi * 400 * t));
+          (0.40 * sin(2 * pi * 150 * t) + 0.15 * sin(2 * pi * 250 * t));
     }));
 
-/// Descending whoosh (880 → 220 Hz linear chirp, bell envelope, 0.35 s).
-Uint8List _genClear() => _buildWav(_samples(0.35, (t, p) {
-      // f0=880, f1=220, T=0.35 → (f1−f0)/(2T) = −660/0.7 ≈ −942.86
+/// Celebratory arpeggio (440 + 550 + 660 Hz, bell envelope, 0.4 s).
+Uint8List _genClear() => _buildWav(_samples(0.4, (t, p) {
       final env = sin(pi * p); // bell shape
-      return 0.30 * env * sin(2 * pi * (880 * t - 942.86 * t * t));
+      return 0.25 * env * (sin(2 * pi * 440 * t) +
+          sin(2 * pi * 550 * t) +
+          sin(2 * pi * 660 * t));
     }));
 
-/// Dissonant buzz (130 Hz + 155 Hz, 0.2 s) for invalid drops.
-Uint8List _genDenied() => _buildWav(_samples(0.2, (t, p) {
-      final env = (p < 0.05 ? p / 0.05 : 1.0) * (1.0 - p);
-      return 0.30 * env *
-          (0.6 * sin(2 * pi * 130 * t) + 0.4 * sin(2 * pi * 155 * t));
+/// Short boing rejection (120 Hz + 180 Hz, quick fade, 0.15 s).
+Uint8List _genDenied() => _buildWav(_samples(0.15, (t, p) {
+      final env = exp(-8.0 * p);
+      return 0.35 * env *
+          (0.6 * sin(2 * pi * 120 * t) + 0.4 * sin(2 * pi * 180 * t));
     }));
 
 /// Manages four AudioPlayer instances pre-loaded with generated WAV data.
@@ -533,6 +533,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final pr = _previewR;
     final pc = _previewC;
     final valid = _validDrop;
+    final pos = _dragPos; // capture before setState clears it
 
     setState(() {
       _dragSlotIdx = null;
@@ -545,8 +546,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (valid && pr != null && pc != null) {
       _placePiece(slotIdx, pr, pc);
     } else {
-      // Denied sound for invalid drop
       _sounds.playDenied();
+      HapticFeedback.mediumImpact();
+      // Extra feedback when released completely outside the grid
+      if (pos != null) {
+        final gridBox =
+            _gridKey.currentContext?.findRenderObject() as RenderBox?;
+        if (gridBox != null) {
+          final local = gridBox.globalToLocal(pos);
+          final outside = local.dx < 0 ||
+              local.dy < 0 ||
+              local.dx > gridBox.size.width ||
+              local.dy > gridBox.size.height;
+          if (outside) HapticFeedback.mediumImpact();
+        }
+      }
     }
   }
 
