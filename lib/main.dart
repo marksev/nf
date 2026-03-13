@@ -98,10 +98,10 @@ class Particle {
 // ─── AUDIO ───────────────────────────────────────────────────────────────────
 
 class SoundManager {
-  void playPickup() => AudioPlayer().play(AssetSource('sounds/pickup.wav'));
-  void playPlace()  => AudioPlayer().play(AssetSource('sounds/place.wav'));
-  void playClear()  => AudioPlayer().play(AssetSource('sounds/clear.wav'));
-  void playDenied() => AudioPlayer().play(AssetSource('sounds/denied.wav'));
+  void playPickup() => AudioPlayer().play(AssetSource('sounds/pickup.mp3'));
+  void playPlace()  => AudioPlayer().play(AssetSource('sounds/place.mp3'));
+  void playClear()  => AudioPlayer().play(AssetSource('sounds/clear.mp3'));
+  void playDenied() => AudioPlayer().play(AssetSource('sounds/denied.mp3'));
   void dispose() {}
   Future<void> init() async {}
 }
