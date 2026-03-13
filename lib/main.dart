@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'dart:math';
-import 'dart:typed_data';
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const int kGridSize = 8;
@@ -98,136 +97,13 @@ class Particle {
 
 // ─── AUDIO ───────────────────────────────────────────────────────────────────
 
-/// A just_audio source backed by raw in-memory WAV bytes.
-class _WavSource extends StreamAudioSource {
-  final Uint8List _bytes;
-  _WavSource(this._bytes) : super(tag: 'wav');
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    start ??= 0;
-    end ??= _bytes.length;
-    return StreamAudioResponse(
-      sourceLength: _bytes.length,
-      contentLength: end - start,
-      offset: start,
-      contentType: 'audio/wav',
-      stream: Stream.value(_bytes.sublist(start, end)),
-    );
-  }
-}
-
-/// Wraps a list of signed 16-bit PCM samples into a valid WAV byte buffer
-/// (mono, 44100 Hz, 16-bit).
-Uint8List _buildWav(List<int> pcm16) {
-  final dataSize = pcm16.length * 2;
-  final buf = ByteData(44 + dataSize);
-
-  void str(int off, String s) {
-    for (var i = 0; i < s.length; i++) {
-      buf.setUint8(off + i, s.codeUnitAt(i));
-    }
-  }
-
-  str(0, 'RIFF');
-  buf.setUint32(4, 36 + dataSize, Endian.little); // file size − 8
-  str(8, 'WAVEfmt ');                              // "WAVE" + "fmt "
-  buf.setUint32(16, 16, Endian.little);            // fmt chunk size
-  buf.setUint16(20, 1, Endian.little);             // PCM
-  buf.setUint16(22, 1, Endian.little);             // mono
-  buf.setUint32(24, 44100, Endian.little);         // sample rate
-  buf.setUint32(28, 88200, Endian.little);         // byte rate (SR*1*2)
-  buf.setUint16(32, 2, Endian.little);             // block align
-  buf.setUint16(34, 16, Endian.little);            // bits per sample
-  str(36, 'data');
-  buf.setUint32(40, dataSize, Endian.little);
-
-  for (var i = 0; i < pcm16.length; i++) {
-    buf.setInt16(44 + i * 2, pcm16[i], Endian.little);
-  }
-  return buf.buffer.asUint8List();
-}
-
-/// Generates a list of signed 16-bit PCM samples.
-/// [dur] seconds, sample function receives (time_secs, progress 0→1).
-List<int> _samples(double dur, double Function(double t, double p) fn) {
-  final n = (dur * 44100).round();
-  return List.generate(n, (i) {
-    final v = fn(i / 44100.0, i / n);
-    return (v * 32767).round().clamp(-32768, 32767);
-  });
-}
-
-// ── Individual sound generators ──
-
-/// Soft upward chirp (480 → 720 Hz linear sweep, 0.12 s).
-Uint8List _genPickup() => _buildWav(_samples(0.12, (t, p) {
-      // Linear chirp phase: φ = 2π(f0·t + (f1−f0)/(2T)·t²)
-      // f0=480, f1=720, T=0.12 → Δf/(2T)=1000
-      final env = p < 0.08 ? p / 0.08 : 1.0 - (p - 0.08) / 0.92;
-      return 0.28 * env * sin(2 * pi * (480 * t + 1000 * t * t));
-    }));
-
-/// Satisfying thud (200 Hz + 400 Hz harmonic, fast exponential decay, 0.15 s).
-Uint8List _genPlace() => _buildWav(_samples(0.15, (t, p) {
-      final attack = p < 0.04 ? p / 0.04 : 1.0;
-      final decay = exp(-10.0 * p);
-      return attack * decay *
-          (0.35 * sin(2 * pi * 200 * t) + 0.12 * sin(2 * pi * 400 * t));
-    }));
-
-/// Descending whoosh (880 → 220 Hz linear chirp, bell envelope, 0.35 s).
-Uint8List _genClear() => _buildWav(_samples(0.35, (t, p) {
-      // f0=880, f1=220, T=0.35 → (f1−f0)/(2T) = −660/0.7 ≈ −942.86
-      final env = sin(pi * p); // bell shape
-      return 0.30 * env * sin(2 * pi * (880 * t - 942.86 * t * t));
-    }));
-
-/// Dissonant buzz (130 Hz + 155 Hz, 0.2 s) for invalid drops.
-Uint8List _genDenied() => _buildWav(_samples(0.2, (t, p) {
-      final env = (p < 0.05 ? p / 0.05 : 1.0) * (1.0 - p);
-      return 0.30 * env *
-          (0.6 * sin(2 * pi * 130 * t) + 0.4 * sin(2 * pi * 155 * t));
-    }));
-
-/// Manages four AudioPlayer instances pre-loaded with generated WAV data.
 class SoundManager {
-  final _pickup = AudioPlayer();
-  final _place  = AudioPlayer();
-  final _clear  = AudioPlayer();
-  final _denied = AudioPlayer();
-  bool _ready = false;
-
-  Future<void> init() async {
-    try {
-      await Future.wait([
-        _pickup.setAudioSource(_WavSource(_genPickup())),
-        _place.setAudioSource(_WavSource(_genPlace())),
-        _clear.setAudioSource(_WavSource(_genClear())),
-        _denied.setAudioSource(_WavSource(_genDenied())),
-      ]);
-      _ready = true;
-    } catch (_) {
-      // Sound is non-critical; silently ignore init failures.
-    }
-  }
-
-  void playPickup() => _play(_pickup);
-  void playPlace()  => _play(_place);
-  void playClear()  => _play(_clear);
-  void playDenied() => _play(_denied);
-
-  void _play(AudioPlayer p) {
-    if (!_ready) return;
-    p.seek(Duration.zero).then((_) => p.play()).catchError((_) {});
-  }
-
-  void dispose() {
-    _pickup.dispose();
-    _place.dispose();
-    _clear.dispose();
-    _denied.dispose();
-  }
+  void playPickup() => AudioPlayer().play(AssetSource('sounds/pickup.mp3'));
+  void playPlace()  => AudioPlayer().play(AssetSource('sounds/place.mp3'));
+  void playClear()  => AudioPlayer().play(AssetSource('sounds/clear.mp3'));
+  void playDenied() => AudioPlayer().play(AssetSource('sounds/denied.mp3'));
+  void dispose() {}
+  Future<void> init() async {}
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
@@ -533,6 +409,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     final pr = _previewR;
     final pc = _previewC;
     final valid = _validDrop;
+    final pos = _dragPos; // capture before setState clears it
 
     setState(() {
       _dragSlotIdx = null;
@@ -545,8 +422,21 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     if (valid && pr != null && pc != null) {
       _placePiece(slotIdx, pr, pc);
     } else {
-      // Denied sound for invalid drop
       _sounds.playDenied();
+      HapticFeedback.mediumImpact();
+      // Extra feedback when released completely outside the grid
+      if (pos != null) {
+        final gridBox =
+            _gridKey.currentContext?.findRenderObject() as RenderBox?;
+        if (gridBox != null) {
+          final local = gridBox.globalToLocal(pos);
+          final outside = local.dx < 0 ||
+              local.dy < 0 ||
+              local.dx > gridBox.size.width ||
+              local.dy > gridBox.size.height;
+          if (outside) HapticFeedback.mediumImpact();
+        }
+      }
     }
   }
 
