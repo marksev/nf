@@ -9,15 +9,15 @@ import 'dart:math';
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const int kGridSize = 8;
-const Color kBgColor = Color(0xFF3A5080);
-const Color kPanelColor = Color(0xFF2E4472);
-const Color kGridBgColor = Color(0xFF263C66);
-const Color kCellEmptyColor = Color(0xFF1E3050);
-const Color kCellBorderColor = Color(0xFF182840);
+const Color kBgColor = Color(0xFF1a0a2e);
+const Color kPanelColor = Color(0xFF2d1457);
+const Color kGridBgColor = Color(0xFF0f0720);
+const Color kCellEmptyColor = Color(0xFF1e0d3a);
+const Color kCellBorderColor = Color(0xFF2a1250);
 const Color kGoldColor = Color(0xFFFFD700);
-const Color kAccentColor = Color(0xFFFFFFFF);
-const Color kAccent2Color = Color(0xFF4A6A9A);
-const Color kTextColor = Color(0xFFFFFFFF);
+const Color kAccentColor = Color(0xFFff6b9d);
+const Color kAccent2Color = Color(0xFFc44dff);
+const Color kTextColor = Color(0xFFf0e6ff);
 
 /// How many grid-cell heights the drag ghost is lifted above the finger.
 const double kDragOffsetCells = 1.8;
@@ -29,14 +29,14 @@ class PieceColor {
 }
 
 const List<PieceColor> kPieceColors = [
-  PieceColor(Color(0xFFE53935), Color(0xFFEF9A9A), Color(0xFF7F0000)), // red
-  PieceColor(Color(0xFFFDD835), Color(0xFFFFF176), Color(0xFF7A6500)), // yellow
-  PieceColor(Color(0xFF8E24AA), Color(0xFFCE93D8), Color(0xFF4A0072)), // purple
-  PieceColor(Color(0xFFE65100), Color(0xFFFFCC80), Color(0xFF7A2100)), // orange
-  PieceColor(Color(0xFF0288D1), Color(0xFF81D4FA), Color(0xFF004A7A)), // cyan
-  PieceColor(Color(0xFF2E7D32), Color(0xFFA5D6A7), Color(0xFF1A3D1C)), // green
-  PieceColor(Color(0xFFE53935), Color(0xFFEF9A9A), Color(0xFF7F0000)), // red
-  PieceColor(Color(0xFF8E24AA), Color(0xFFCE93D8), Color(0xFF4A0072)), // purple
+  PieceColor(Color(0xFFFF6B6B), Color(0xFFFF9999), Color(0xFFCC3333)), // red
+  PieceColor(Color(0xFFFFD166), Color(0xFFFFE99A), Color(0xFFCC9900)), // yellow
+  PieceColor(Color(0xFF06D6A0), Color(0xFF6EFFD0), Color(0xFF049970)), // green
+  PieceColor(Color(0xFF118AB2), Color(0xFF56C8F0), Color(0xFF0A5F7A)), // blue
+  PieceColor(Color(0xFFC44DFF), Color(0xFFE090FF), Color(0xFF8800CC)), // purple
+  PieceColor(Color(0xFFFF9F43), Color(0xFFFFCA85), Color(0xFFCC6600)), // orange
+  PieceColor(Color(0xFFFF6B9D), Color(0xFFFFAACB), Color(0xFFCC3366)), // pink
+  PieceColor(Color(0xFF48DBFB), Color(0xFF99EEFF), Color(0xFF009FCC)), // cyan
 ];
 
 // ─── SHAPES ──────────────────────────────────────────────────────────────────
@@ -538,7 +538,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         children: [
           ShaderMask(
             shaderCallback: (bounds) => const LinearGradient(
-              colors: [Colors.white, Color(0xFFADD8FF), Color(0xFF7BBFFF)],
+              colors: [kAccentColor, kAccent2Color, Color(0xFF6bcbff)],
             ).createShader(bounds),
             child: const Text(
               'Brick Pop',
@@ -571,7 +571,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
         children: [
           Text(label,
               style: const TextStyle(
-                  fontSize: 10, color: Color(0xFFADD8FF), letterSpacing: 1.5)),
+                  fontSize: 10, color: Color(0xFF9b7fc4), letterSpacing: 1.5)),
           Text(
             value.toString(),
             style: const TextStyle(
@@ -622,8 +622,11 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                 aspectRatio: 1,
                 child: Container(
                   key: _slotKeys[i],
-                  decoration: const BoxDecoration(
-                    color: Colors.transparent,
+                  decoration: BoxDecoration(
+                    color: kPanelColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: kAccent2Color.withOpacity(0.2), width: 2),
                   ),
                   child: _pieces[i] == null
                       ? null
@@ -752,8 +755,8 @@ class GridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cellW = size.width / kGridSize;
     final cellH = size.height / kGridSize;
-    const gap = 2.0;
-    const radius = Radius.circular(4);
+    const gap = 3.0;
+    const radius = Radius.circular(5);
 
     // Collect preview positions
     final previewSet = <String>{};
@@ -785,20 +788,19 @@ class GridPainter extends CustomPainter {
           canvas.drawRRect(rect, Paint()..color = Colors.white.withOpacity(0.9));
         } else if (val != 0) {
           final pc = kPieceColors[(val - 1) % kPieceColors.length];
-          const bevel = 3.0;
-          // Layer 1: shadow (bottom-right dark border)
-          canvas.drawRRect(rect, Paint()..color = pc.shadow);
-          // Layer 2: highlight (top-left light border)
+          final grad = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [pc.shine, pc.fill],
+          ).createShader(Rect.fromLTWH(x, y, w, h));
+          canvas.drawRRect(rect, Paint()..shader = grad);
+          // Shine highlight
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-                Rect.fromLTWH(x, y, w - bevel, h - bevel), radius),
-            Paint()..color = pc.shine);
-          // Layer 3: main fill (center)
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2),
-                const Radius.circular(2)),
-            Paint()..color = pc.fill);
+                Rect.fromLTWH(x + 3, y + 3, w - 6, (h - 6) * 0.4),
+                const Radius.circular(3)),
+            Paint()..color = Colors.white.withOpacity(0.25),
+          );
         } else if (isPreview) {
           final pc = kPieceColors[previewPiece!.colorIdx];
           canvas.drawRRect(
@@ -836,29 +838,34 @@ class PiecePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final pc = kPieceColors[piece.colorIdx];
     const pad = 4.0;
-    const radius = Radius.circular(4);
-    const bevel = 3.0;
+    const radius = Radius.circular(5);
 
     for (final cell in piece.shape) {
       final x = pad + cell[1] * cellSize;
       final y = pad + cell[0] * cellSize;
       final sz = cellSize - 2;
-      final rect = RRect.fromRectAndRadius(Rect.fromLTWH(x, y, sz, sz), radius);
 
-      // Layer 1: shadow (bottom-right dark border)
-      canvas.drawRRect(rect, Paint()..color = pc.shadow);
-      // Layer 2: highlight (top-left light border)
+      // Shadow
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, y, sz - bevel, sz - bevel), radius),
-        Paint()..color = pc.shine,
+        RRect.fromRectAndRadius(Rect.fromLTWH(x + 2, y + 2, sz, sz), radius),
+        Paint()..color = pc.shadow,
       );
-      // Layer 3: main fill (center)
+      // Main gradient
+      final grad = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [pc.shine, pc.fill],
+      ).createShader(Rect.fromLTWH(x, y, sz, sz));
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(x, y, sz, sz), radius),
+        Paint()..shader = grad,
+      );
+      // Shine
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-            Rect.fromLTWH(x + bevel, y + bevel, sz - bevel * 2, sz - bevel * 2),
-            const Radius.circular(2)),
-        Paint()..color = pc.fill,
+            Rect.fromLTWH(x + 3, y + 3, sz - 6, (sz - 6) * 0.4),
+            const Radius.circular(3)),
+        Paint()..color = Colors.white.withOpacity(0.25),
       );
     }
   }
