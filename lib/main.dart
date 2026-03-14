@@ -69,7 +69,7 @@ const List<List<List<int>>> kShapes = [
   [[0,0],[0,1],[0,2],[0,3]],
   [[0,0],[1,0],[2,0],[3,0]],
   [[0,0],[0,1],[1,0],[1,1]],
-  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[2,2]],
+
   [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]],
   [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]],
 ];
@@ -146,6 +146,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _score = 0;
   int _best = 0;
   bool _gameOver = false;
+  bool _continueAvailable = true;
+  RewardedAd? _rewardedAd;
 
   // Drag state
   int? _dragSlotIdx;
@@ -171,6 +173,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _pieces = [null, null, null];
     _ticker = createTicker(_onTick)..start();
     _loadBest();
+    _loadRewardedAd();
     _refillTray();
     _sounds.init();
   }
@@ -207,6 +210,41 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   Future<void> _saveBest() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('bb_best', _best);
+  }
+
+  void _loadRewardedAd() {
+    RewardedAd.load(
+      adUnitId: 'ca-app-pub-3940256099942544/5224354917',
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) => setState(() => _rewardedAd = ad),
+        onAdFailedToLoad: (_) => setState(() => _rewardedAd = null),
+      ),
+    );
+  }
+
+  void _continueGame() {
+    setState(() {
+      _continueAvailable = false;
+      _gameOver = false;
+      _refillTray();
+    });
+  }
+
+  void _showRewardedAd() {
+    if (_rewardedAd == null) {
+      _continueGame();
+      return;
+    }
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) => ad.dispose(),
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _continueGame();
+      },
+    );
+    _rewardedAd!.show(onUserEarnedReward: (_, __) => _continueGame());
+    _rewardedAd = null;
   }
 
   Piece _randomPiece() {
@@ -365,6 +403,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _restartGame() {
     setState(() {
+      _continueAvailable = true;
       _gameOver = false;
       _score = 0;
       _board = _emptyBoard();
@@ -728,6 +767,24 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   style: TextStyle(
                       fontSize: 22, fontWeight: FontWeight.bold)),
             ),
+            if (_continueAvailable) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _showRewardedAd,
+                icon: const Icon(Icons.play_circle_outline),
+                label: const Text('Watch Ad to Continue',
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kGoldColor,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
