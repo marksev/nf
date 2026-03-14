@@ -146,7 +146,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _score = 0;
   int _best = 0;
   bool _gameOver = false;
-  bool _continueAvailable = false;
+  bool _continueAvailable = true;
   RewardedAd? _rewardedAd;
 
   // Drag state
@@ -204,10 +204,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _loadBest() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _best = prefs.getInt('bb_best') ?? 0;
-      _continueAvailable = !(prefs.getBool('bb_continue_used') ?? false);
-    });
+    setState(() => _best = prefs.getInt('bb_best') ?? 0);
   }
 
   Future<void> _saveBest() async {
@@ -226,9 +223,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     );
   }
 
-  void _continueGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('bb_continue_used', true);
+  void _continueGame() {
     setState(() {
       _continueAvailable = false;
       _gameOver = false;
@@ -406,13 +401,9 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     setState(() => _gameOver = true);
   }
 
-  void _restartGame() async {
-    if (_continueAvailable) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('bb_continue_used', true);
-      _continueAvailable = false;
-    }
+  void _restartGame() {
     setState(() {
+      _continueAvailable = true;
       _gameOver = false;
       _score = 0;
       _board = _emptyBoard();
