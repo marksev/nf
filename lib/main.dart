@@ -69,7 +69,7 @@ const List<List<List<int>>> kShapes = [
   [[0,0],[0,1],[0,2],[0,3]],
   [[0,0],[1,0],[2,0],[3,0]],
   [[0,0],[0,1],[1,0],[1,1]],
-  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[2,2]],
+
   [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]],
   [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]],
 ];
@@ -146,6 +146,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   int _score = 0;
   int _best = 0;
   bool _gameOver = false;
+  bool _continueAvailable = false;
+  RewardedAd? _rewardedAd;
 
   // Drag state
   int? _dragSlotIdx;
@@ -171,6 +173,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     _pieces = [null, null, null];
     _ticker = createTicker(_onTick)..start();
     _loadBest();
+    _loadRewardedAd();
     _refillTray();
     _sounds.init();
   }
@@ -201,12 +204,52 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   Future<void> _loadBest() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _best = prefs.getInt('bb_best') ?? 0);
+    setState(() {
+      _best = prefs.getInt('bb_best') ?? 0;
+      _continueAvailable = !(prefs.getBool('bb_continue_used') ?? false);
+    });
   }
 
   Future<void> _saveBest() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('bb_best', _best);
+  }
+
+  void _loadRewardedAd() {
+    RewardedAd.load(
+      adUnitId: 'ca-app-pub-3940256099942544/5224354917',
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) => setState(() => _rewardedAd = ad),
+        onAdFailedToLoad: (_) => setState(() => _rewardedAd = null),
+      ),
+    );
+  }
+
+  void _continueGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('bb_continue_used', true);
+    setState(() {
+      _continueAvailable = false;
+      _gameOver = false;
+      _refillTray();
+    });
+  }
+
+  void _showRewardedAd() {
+    if (_rewardedAd == null) {
+      _continueGame();
+      return;
+    }
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) => ad.dispose(),
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _continueGame();
+      },
+    );
+    _rewardedAd!.show(onUserEarnedReward: (_, __) => _continueGame());
+    _rewardedAd = null;
   }
 
   Piece _randomPiece() {
@@ -363,7 +406,12 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     setState(() => _gameOver = true);
   }
 
-  void _restartGame() {
+  void _restartGame() async {
+    if (_continueAvailable) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('bb_continue_used', true);
+      _continueAvailable = false;
+    }
     setState(() {
       _gameOver = false;
       _score = 0;
@@ -728,6 +776,24 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
                   style: TextStyle(
                       fontSize: 22, fontWeight: FontWeight.bold)),
             ),
+            if (_continueAvailable) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _showRewardedAd,
+                icon: const Icon(Icons.play_circle_outline),
+                label: const Text('Watch Ad to Continue',
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kGoldColor,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
