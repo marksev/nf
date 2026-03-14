@@ -11,10 +11,17 @@ class BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<BannerAdWidget> {
   BannerAd? _bannerAd;
   bool _isLoaded = false;
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
 
   @override
   void initState() {
     super.initState();
+    _loadAd();
+  }
+
+  void _loadAd() {
+    _bannerAd?.dispose();
     _bannerAd = BannerAd(
       adUnitId: 'ca-app-pub-3940256099942544/6300978111', // test ad unit
       size: AdSize.banner,
@@ -24,6 +31,12 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           _bannerAd = null;
+          if (_retryCount < _maxRetries) {
+            _retryCount++;
+            Future.delayed(Duration(seconds: _retryCount * 2), () {
+              if (mounted) _loadAd();
+            });
+          }
         },
       ),
     )..load();
