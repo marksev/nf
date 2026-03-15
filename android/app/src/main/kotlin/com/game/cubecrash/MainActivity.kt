@@ -1,4 +1,4 @@
-package com.example.blocky_blast
+package com.game.cubecrash
 
 import io.flutter.embedding.android.FlutterActivity
 
