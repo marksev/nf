@@ -218,7 +218,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _loadRewardedAd() {
     RewardedAd.load(
-      adUnitId: 'ca-app-pub-3940256099942544/5224354917',
+      adUnitId: 'ca-app-pub-1803522644415190/6441029345',
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) => setState(() => _rewardedAd = ad),
