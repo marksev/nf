@@ -74,6 +74,10 @@ const List<List<List<int>>> kShapes = [
   [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]],
 ];
 
+// Weighted shape pools: 90% small (≤4 cells), 10% large (≥5 cells)
+final _kEasyShapes = kShapes.where((s) => s.length <= 4).toList();
+final _kHardShapes = kShapes.where((s) => s.length >= 5).toList();
+
 // ─── MODELS ──────────────────────────────────────────────────────────────────
 class Piece {
   final List<List<int>> shape;
@@ -225,6 +229,14 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   void _continueGame() {
     setState(() {
+      // Clear the bottom 2 rows to give breathing room
+      for (int r = kGridSize - 2; r < kGridSize; r++) {
+        for (int c = 0; c < kGridSize; c++) {
+          _board[r][c] = 0;
+        }
+      }
+      // Discard the pieces that caused game over — they can't be placed
+      _pieces = [null, null, null];
       _continueAvailable = false;
       _gameOver = false;
       _refillTray();
@@ -248,7 +260,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   Piece _randomPiece() {
-    final shape = kShapes[_rand.nextInt(kShapes.length)];
+    final pool = _rand.nextDouble() < 0.90 ? _kEasyShapes : _kHardShapes;
+    final shape = pool[_rand.nextInt(pool.length)];
     return Piece(shape, _rand.nextInt(kPieceColors.length));
   }
 
