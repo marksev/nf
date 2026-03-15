@@ -1,0 +1,10 @@
+# Keystore files — never commit these
+*.jks
+*.keystore
+key.properties
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
