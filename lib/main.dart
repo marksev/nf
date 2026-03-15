@@ -122,7 +122,7 @@ class BlockyBlastApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Brick Pop',
+      title: 'CubeCrash',
       theme: ThemeData.dark(),
       home: const GamePage(),
       debugShowCheckedModeBanner: false,
@@ -580,7 +580,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               colors: [kAccentColor, kAccent2Color, Color(0xFF6bcbff)],
             ).createShader(bounds),
             child: const Text(
-              'Brick Pop',
+              'CubeCrash',
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
