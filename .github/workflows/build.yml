@@ -37,23 +37,13 @@ jobs:
         run: flutter analyze --no-fatal-infos
         continue-on-error: true
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode \
-            > ${{ github.workspace }}/android/keystore.jks
-
       - name: Build release APK
-        env:
-          KEYSTORE_PATH: ${{ github.workspace }}/android/keystore.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cubecrash-release-apk
+          name: blocky-blast-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
