@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace "com.example.blocky_blast"
+    namespace "com.game.cubecrash"
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.blocky_blast"
+        applicationId "com.game.cubecrash"
         minSdk flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
         versionCode 1
