@@ -1,16 +1,14 @@
-name: Build Android APK
+name: Build Android AAB
 
 on:
   push:
     branches:
-      - claude/html-to-flutter-10O5e
-      - claude/fix-drag-offset-ux-kUYRZ
       - main
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Build Release APK
+  build-aab:
+    name: Build Release AAB
     runs-on: ubuntu-latest
 
     steps:
@@ -30,6 +28,17 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/release-keystore.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storeFile=release-keystore.jks" > android/key.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+
       - name: Get Flutter dependencies
         run: flutter pub get
 
@@ -37,17 +46,17 @@ jobs:
         run: flutter analyze --no-fatal-infos
         continue-on-error: true
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build release AAB
+        run: flutter build appbundle --release
 
-      - name: Upload APK artifact
+      - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: blocky-blast-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: cube-crash-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
 
-      - name: Show APK info
+      - name: Show AAB info
         run: |
-          echo "APK built successfully!"
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          echo "AAB built successfully!"
+          ls -lh build/app/outputs/bundle/release/app-release.aab
